@@ -1,4 +1,3 @@
-
 import torch
 import numpy as np
 import cv2
@@ -6,6 +5,7 @@ import pytesseract
 import pandas as pd
 import streamlit as st
 from PIL import Image
+import easyocr
 
 
 class ObjectDetection:
@@ -27,7 +27,7 @@ class ObjectDetection:
 
 
     def load_model(self):
-        return torch.hub.load('yolov5', model='custom', path='LP_1500.pt', source='local', force_reload=True)
+        return torch.hub.load('yolov5', model='custom', path='LicensPlateModel2.pt', source='local', force_reload=True)
 
 
 
@@ -83,7 +83,9 @@ class ObjectDetection:
         return cv2.resize(image, (width, height))
 
     def OCR(self, frame):
-        return pytesseract.image_to_string(frame, lang='ara')
+        reader = easyocr.Reader(['ar'])
+        return reader.readtext(frame, detail=0)
+        # return pytesseract.image_to_string(frame, lang='ara')
 
     def __call__(self):
         """
@@ -92,7 +94,8 @@ class ObjectDetection:
         :return: void
         """
         pic_num = st.number_input("pic", 1, 3000, 1)
-        pic_path = 'pic/test/images/{}.jpg'.format(pic_num)
+        # pic_path = 'pic/test/images/{}.jpg'.format(pic_num)
+        pic_path = 'pic/CarsLP/rescaled/2.jpg'
 
 
         st.title("Image Manipulation App")
@@ -105,10 +108,34 @@ class ObjectDetection:
         # img_resize = cv2.resize(img, (308, 308))
         results = detection.score_frame(img)
         img , bboxes = detection.plot_boxes(results, img)
-    
-        # Upload image
-        # image_file = st.file_uploader("Upload an image", type=["jpg", "jpeg", "png"])
+        for bbox in bboxes:
+            roi = img[bbox[1]:bbox[3], bbox[0]:bbox[2]]
+            # sharpen the image
+            # kernel = np.array([[-1,-1,-1], [-1,9,-1], [-1,-1,-1]])                      
+            # roi = cv2.filter2D(roi, -1, kernel)
+            #binarize the image
+            # roi = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
+            # roi = cv2.threshold(roi, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]
+            st.subheader("Cropped Image")
+            st.image(roi, use_column_width=True)
+        # def get_corners(bbox):
+        #     x1, y1, x2, y2 = bbox
+        #     return np.float32([[x1, y1], [x1, y2], [x2, y2], [x2, y1]])
+        # def warp_perspective(frame, corners, new_shape):
+        #     width, height = new_shape
+        #     dst = np.float32([[0, 0], [0, height], [width, height], [width, 0]])
+        #     matrix = cv2.getPerspectiveTransform(corners, dst)
+        #     return cv2.warpPerspective(frame, matrix, (width, height))
+
+        # corners = get_corners(bboxes[0])
+        # warped = warp_perspective(img_og, corners, (308, 308))
+        # st.subheader("Warped Image")
+        # st.image(warped, use_column_width=True)
         
+        #ocr
+        text = self.OCR(img_og)
+        st.subheader("OCR")
+        st.write(f'this is the result of ocr {text}')
         
         if True:
             # Load image
@@ -128,8 +155,9 @@ class ObjectDetection:
 
             results2 = detection.score_frame(resized_image)
             img2 , bboxes = detection.plot_boxes(results2, resized_image)
-            # Resize image
             
+            
+
             # Display resized image
             st.subheader("Resized Image")
             st.image(img2, use_column_width=True)
