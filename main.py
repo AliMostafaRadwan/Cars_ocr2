@@ -1,42 +1,28 @@
 import torch
 import numpy as np
 import cv2
-import time
-import mss
-import threading
-import pytesseract
+import easyocr
+from difflib import SequenceMatcher
+
 
 class ObjectDetection:
-    """
-    Class implements Yolo5 model to make inferences on a youtube video using OpenCV.
-    """
+
     
     def __init__(self):
-        """
-        Initializes the class with youtube url and output file.
-        :param url: Has to be as youtube URL,on which prediction is made.
-        :param out_file: A valid output file name.
-        """
+
         self.model = self.load_model()
         self.classes = self.model.names
         self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
         print("\n\nDevice Used:",self.device)
-        self.image_file = '8.jpg'
-        # self.ocr_lock = threading.Lock()
 
 
 
     def load_model(self):
-        return torch.hub.load('yolov5', model='custom', path='LP_1500.pt', source='local', force_reload=True)
+        return torch.hub.load('yolov5', model='custom', path='LicensPlateModel2.pt', source='local', force_reload=True)
 
 
 
     def score_frame(self, frame):
-        """
-        Takes a single frame as input, and scores the frame using yolo5 model.
-        :param frame: input frame in numpy/list/tuple format.
-        :return: Labels and Coordinates of objects detected by model in the frame.
-        """
         self.model.to(self.device)
         frame = [frame]
         results = self.model(frame)
@@ -46,11 +32,6 @@ class ObjectDetection:
 
 
     def class_to_label(self, x):
-        """
-        For a given label value, return corresponding string label.
-        :param x: numeric label
-        :return: corresponding string label
-        """
         return self.classes[int(x)]
 
 
@@ -70,88 +51,117 @@ class ObjectDetection:
                 cv2.rectangle(frame, (x1, y1), (x2, y2), bgr, 2)
                 cv2.putText(frame, self.class_to_label(labels[i]), (x1, y1), cv2.FONT_HERSHEY_SIMPLEX, 0.9, bgr, 2)
                 #print the threshold value
-                cv2.putText(frame, str(row[4]), (x1, y1+20), cv2.FONT_HERSHEY_SIMPLEX, 0.9, bgr2, 2)
+                # cv2.putText(frame, str(row[4]), (x1, y1+20), cv2.FONT_HERSHEY_SIMPLEX, 0.9, bgr2, 2)
         return frame, bboxes
     
-    # def OCR(self, frame):
-    #     ocr = PaddleOCR(use_angle_cls=True, lang='ar') # need to run only once to download and load model into memory
-    #     img_path = frame
-    #     result = ocr.ocr(img_path, cls=True)
-    #     for idx in range(len(result)):
-    #         res = result[idx]
-    #         for line in res:
-    #             print(f'car number is {line[1][0]}')
-    #     self.ocr_lock.release()
-    #     return result
 
 
     def OCR(self, frame):
-        return pytesseract.image_to_string(frame, lang='ara')
+        reader = easyocr.Reader(['ar'])
+        return reader.readtext(frame, detail=0)
+    
+
+    # def text_similarity(self, text1, text2):
+    #     # Create a SequenceMatcher object
+    #     seq_matcher = SequenceMatcher(None, text1, text2)
+
+    #     # Get the similarity ratio
+    #     similarity_ratio = seq_matcher.ratio()
+
+    #     # Return the similarity ratio
+    #     return similarity_ratio
+    
+    
+
+    def text_similarity(self, list1, list2):
+    # Initialize a variable to keep track of the total similarity ratio
+        total_similarity = 0.0
+        
+        # Iterate through the components of the lists
+        for text1, text2 in zip(list1, list2):
+            # Create a SequenceMatcher object for each pair of components
+            seq_matcher = SequenceMatcher(None, text1, text2)
+            
+            # Get the similarity ratio for the pair of components
+            similarity_ratio = seq_matcher.ratio()
+            
+            # Add the similarity ratio to the total
+            total_similarity += similarity_ratio
+        
+        #ignore the division by zero
+        if len(list1) == 0:
+            return 0
+        # Compute the average similarity ratio
+
+        average_similarity = total_similarity / len(list1)
+        
+        # Return the average similarity ratio
+        return average_similarity
+
+    def enhance_black_color(self,img):
+        # Load the image
+        
+        
+        # Convert the image to grayscale
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        
+        # Compute the histogram of the grayscale image
+        hist, bins = np.histogram(gray, 256, [0, 256])
+        
+        # Find the index of the darkest bin with non-zero count
+        darkest_bin = np.argmax(hist)
+        while hist[darkest_bin] == 0:
+            darkest_bin += 1
+        
+        # Create a lookup table to increase the contrast of the dark regions
+        lut = np.zeros((256,), dtype=np.uint8)
+        for i in range(256):
+            if i < darkest_bin:
+                lut[i] = 0
+            else:
+                lut[i] = 255 * ((i - darkest_bin) / (256 - darkest_bin))
+        
+        # Apply the lookup table to the grayscale image
+        result = cv2.LUT(gray, lut)
+        
+        # Convert the grayscale result back to BGR color format
+        result = cv2.cvtColor(result, cv2.COLOR_GRAY2BGR)
+        
+        return result
 
     def __call__(self):
-        """
-        This function is called when class is executed, it runs the loop to read the video frame by frame,
-        and write the output into a new file.
-        :return: void
-        """
-
-        # with mss.mss() as sct:
-        #     monitor = {"top": 0, "left": 0, "width": 1920, "height": 1080}
-        #     while True:
-        #         last_time = time.time()
-        #         img = np.array(sct.grab(monitor))
-        #         img_downpart = img[500:1080, 700:1920]
-        #         img_resize = cv2.resize(img_downpart, (640, 640))
-        #         results = detection.score_frame(img_resize)
-
-        #         img, bboxes = detection.plot_boxes(results, img_resize)
-
-        #         # Display the ROIs of each bounding box
-        #         for bbox in bboxes:
-        #             roi = img[bbox[1]:bbox[3], bbox[0]:bbox[2]]
-        #             cv2.imshow("ROI", roi)
-        #             kernel = np.array([[-1,-1,-1], [-1,9,-1], [-1,-1,-1]])                      
-        #             roi = cv2.filter2D(roi, -1, kernel)
-            
-        #             cv2.imshow("ROI", roi)
-        #             cv2.imwrite('roi.jpg', roi)
-        #             self.OCR(roi) # OCR
-                    
-
-        #         print("FPS: {}".format(1 / (time.time() - last_time)))
-        #         cv2.imshow("OpenCV/Numpy normal", img)
-        #         if cv2.waitKey(25) & 0xFF == ord("q"):
-        #             cv2.destroyAllWindows()
-        #             break
-
-
 
         # read pictures
-        
-        img = cv2.imread('pic/13.jpeg')
-        img_resize = cv2.resize(img, (308, 308))
-        results = detection.score_frame(img)
-        img , bboxes = detection.plot_boxes(results, img_resize)
-        # for bbox in bboxes:
-        #     roi = img[bbox[1]:bbox[3], bbox[0]:bbox[2]]
-        #     # sharpen the image
-        #     kernel = np.array([[-1,-1,-1], [-1,9,-1], [-1,-1,-1]])                      
-        #     roi = cv2.filter2D(roi, -1, kernel)
-        #     #binarize the image
-        #     # roi = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
-        #     # roi = cv2.threshold(roi, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]
+        def predict(img_path,saved_path,visualize=False):
+            img = cv2.imread(img_path)
             
-            
-        #     cv2.imshow("ROI", roi)
-        #     cv2.imwrite('roi.jpg', roi)
-        #     # print(self.OCR(roi)) # OCR
+            img_resize = cv2.resize(img, (308, 308))
+            results = detection.score_frame(img)
+            img , bboxes = detection.plot_boxes(results, img_resize)
 
-            
-        
-        cv2.imshow("OpenCV/Numpy normal", img)
-        cv2.waitKey(0)
-        cv2.destroyAllWindows()
+            for bbox in bboxes:
+                roi = img[bbox[1]:bbox[3], bbox[0]:bbox[2]]
+                roi = self.enhance_black_color(roi)
+                if visualize:
+                    cv2.imshow(saved_path, roi)
+                
+                cv2.imwrite(saved_path, roi)
 
+                final_img = cv2.imread(saved_path)
+                text = self.OCR(final_img)
+                print(f'this is the result of ocr for{img_path}: {text}')
+
+            if visualize:
+                cv2.imshow("OpenCV/Numpy normal", img)
+                cv2.waitKey(0)
+                cv2.destroyAllWindows()
+            return text
+        
+
+        text1 = predict('pic/CarsLP/rescaled/5.jpg','savedpic/roi.jpg',visualize=True)
+        text2 = predict('pic/CarsLP/rescaled/6.jpg','savedpic/roi2.jpg',visualize=True)
+
+        print(f'this is the result of text similarity {self.text_similarity(text1,text2)}')
 
 
 # Create a new object and execute.
